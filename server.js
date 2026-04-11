@@ -57,8 +57,7 @@ const pool = new Pool(
 // ─── Static Files ─────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve the Images folder from the parent directory
-app.use('/images', express.static(path.join(__dirname, '..', 'Images')));
+app.use('/images', express.static('Images'));
 
 // ─── Database Initialisation ──────────────────────────────────────────────────
 async function initDB() {
