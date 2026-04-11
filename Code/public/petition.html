@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Sign the Americans for Moskovitz petition urging Dustin Moskovitz to run for President in the 2028 Democratic Primary.">
+  <title>Sign the Petition | Americans for Moskovitz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ─── Navigation ───────────────────────────────────────────── -->
+  <nav class="navbar" role="navigation" aria-label="Main navigation">
+    <a href="index.html" class="nav-logo" aria-label="Americans for Moskovitz Home">
+      <span class="star" aria-hidden="true">★</span>
+      Americans for Moskovitz
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About Dustin</a></li>
+      <li><a href="history.html">The History of Political Drafts</a></li>
+      <li><a href="attributions.html">Attributions</a></li>
+      <li class="nav-cta"><a href="petition.html" class="active">Sign the Petition</a></li>
+    </ul>
+  </nav>
+
+  <!-- ─── Page Hero ─────────────────────────────────────────────── -->
+  <header class="page-hero" aria-label="Page header">
+    <div class="page-hero-bg petition-bg" role="img" aria-label="Dustin Moskovitz speaking at a Q&amp;A session at Web Summit 2017"></div>
+    <span class="eyebrow" style="background:rgba(255,255,255,0.12); border-color:rgba(255,255,255,0.2); color:rgba(255,255,255,0.85);">Make Your Voice Heard</span>
+    <h1>Sign the Petition</h1>
+    <p>Add your name to our growing list of Americans calling on Dustin Moskovitz to enter the 2028 Democratic Presidential Primary.</p>
+  </header>
+
+  <!-- ─── Petition Main Content ─────────────────────────────────── -->
+  <section class="section bg-light" aria-label="Petition section">
+    <div class="petition-layout">
+
+      <!-- Left Column: Mission -->
+      <div class="petition-reasons">
+        <h2>Our Mission</h2>
+        <p>As a grassroots movement with no direct connection to Dustin Moskovitz, we hope to inspire Moskovitz to grant America the leadership, stability, and vision it needs. By demonstrating our support, we also hope to prove that individual citizens can still make a difference in our increasingly broken political system.</p>
+        <p>To further these goals, please add your name and email to our secure digital petition, which requests that Dustin Moskovitz enter the 2028 Democratic Presidential Primaries.</p>
+        <p>To learn more about why we believe Dustin Moskovitz is the right leader for this moment, visit the <a href="about.html">About Dustin</a> page.</p>
+      </div>
+
+      <!-- Right Column: Form -->
+      <div>
+        <div class="form-card" role="form" aria-label="Petition signature form">
+          <h3>Add Your Signature</h3>
+          <p class="form-subtitle">Your information is stored securely and will never be shared with third parties.</p>
+
+          <!-- Signature Counter -->
+          <div class="sig-counter" role="status" aria-live="polite" aria-label="Current petition signatures">
+            <span class="sig-num">0</span>
+            <span class="sig-label">Americans have<br>already signed</span>
+          </div>
+
+          <!-- Status Messages -->
+          <div id="form-message" class="form-message" role="alert" aria-live="assertive"></div>
+
+          <form id="petition-form" novalidate>
+            <div class="form-group">
+              <label for="input-name">Full Name <span aria-hidden="true" style="color:var(--red)">*</span></label>
+              <input
+                type="text"
+                id="input-name"
+                name="name"
+                autocomplete="name"
+                placeholder="Jane Smith"
+                required
+                maxlength="100"
+                aria-describedby="name-error"
+                aria-required="true"
+              >
+              <span id="name-error" class="field-error-msg" role="alert"></span>
+            </div>
+
+            <div class="form-group">
+              <label for="input-email">Email Address <span aria-hidden="true" style="color:var(--red)">*</span></label>
+              <input
+                type="email"
+                id="input-email"
+                name="email"
+                autocomplete="email"
+                placeholder="jane@example.com"
+                required
+                maxlength="255"
+                aria-describedby="email-error"
+                aria-required="true"
+              >
+              <span id="email-error" class="field-error-msg" role="alert"></span>
+            </div>
+
+            <button type="submit" id="submit-btn" class="btn btn-blue" aria-label="Submit petition signature">
+              <span id="submit-text">Sign the Petition</span>
+            </button>
+          </form>
+
+          <p class="form-disclaimer">
+            By signing, you agree that your name and email may be included in a petition submitted to Dustin Moskovitz. We do not share, sell, or distribute your personal information. This is a secure, private petition.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─── Footer ─────────────────────────────────────────────────── -->
+  <footer class="footer" role="contentinfo">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <h3>★ Americans for Moskovitz</h3>
+        <p>
+          A grassroots, volunteer-led movement with no direct connection to Dustin Moskovitz or any official campaign. We are private citizens who believe in his potential to lead this nation.
+        </p>
+      </div>
+      <div class="footer-col">
+        <h4>Pages</h4>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="about.html">About Dustin</a></li>
+          <li><a href="petition.html">Sign the Petition</a></li>
+          <li><a href="attributions.html">Attributions</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Issues</h4>
+        <ul>
+          <li><a href="about.html#philanthropy">Philanthropy</a></li>
+          <li><a href="about.html#ai">AI Safety &amp; Regulation</a></li>
+          <li><a href="about.html#housing">Housing Affordability</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>&copy; 2025 Americans for Moskovitz. Grassroots movement, not affiliated with Dustin Moskovitz.</span>
+      <a href="attributions.html">Image Attributions</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
