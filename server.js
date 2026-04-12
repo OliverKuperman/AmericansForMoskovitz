@@ -153,6 +153,30 @@ app.post('/api/petition', petitionLimiter, requireUSIP, async (req, res) => {
   }
 });
 
+// ─── Sitemap ──────────────────────────────────────────────────────────────────
+app.get('/sitemap.xml', (_req, res) => {
+  const base = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
+
+  const pages = [
+    { loc: '/',                  priority: '1.0', changefreq: 'weekly'  },
+    { loc: '/petition.html',     priority: '0.9', changefreq: 'weekly'  },
+    { loc: '/about.html',        priority: '0.7', changefreq: 'monthly' },
+    { loc: '/history.html',      priority: '0.6', changefreq: 'monthly' },
+    { loc: '/attributions.html', priority: '0.3', changefreq: 'yearly'  },
+  ];
+
+  const urls = pages
+    .map(
+      p => `  <url>\n    <loc>${base}${p.loc}</loc>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`
+    )
+    .join('\n');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`;
+
+  res.header('Content-Type', 'application/xml');
+  res.send(xml);
+});
+
 // ─── API: Get Signature Count ─────────────────────────────────────────────────
 app.get('/api/petition/count', async (_req, res) => {
   try {
