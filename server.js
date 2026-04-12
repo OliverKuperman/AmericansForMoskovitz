@@ -6,8 +6,13 @@ const { Pool }   = require('pg');
 const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
 const path       = require('path');
+const geoip      = require('geoip-lite');
 
 const app = express();
+
+// Trust the first proxy hop so req.ip reflects the real client IP
+// (required on Heroku, Render, Railway, Nginx, etc.)
+app.set('trust proxy', 1);
 
 // ─── Security Headers ─────────────────────────────────────────────────────────
 app.use(
@@ -92,8 +97,35 @@ function validatePetition(name, email) {
   return null;
 }
 
+// ─── US-Only Geolocation Guard ────────────────────────────────────────────────
+function requireUSIP(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress || '';
+
+  // Normalise IPv4-mapped IPv6 addresses (::ffff:1.2.3.4 → 1.2.3.4)
+  const normalised = ip.replace(/^::ffff:/, '');
+
+  // Allow loopback/private addresses in development
+  const isLocal =
+    normalised === '::1' ||
+    normalised === '127.0.0.1' ||
+    normalised.startsWith('10.') ||
+    normalised.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(normalised);
+
+  if (isLocal) return next();
+
+  const geo = geoip.lookup(normalised);
+  if (!geo || geo.country !== 'US') {
+    return res.status(403).json({
+      error: 'This petition is open to US residents only.',
+    });
+  }
+
+  next();
+}
+
 // ─── API: Submit Petition ─────────────────────────────────────────────────────
-app.post('/api/petition', petitionLimiter, async (req, res) => {
+app.post('/api/petition', petitionLimiter, requireUSIP, async (req, res) => {
   const { name, email } = req.body ?? {};
 
   const validationError = validatePetition(name, email);
