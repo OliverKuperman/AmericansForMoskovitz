@@ -98,7 +98,7 @@ function validatePetition(name, email) {
 }
 
 // ─── US-Only Geolocation Guard ────────────────────────────────────────────────
-function requireUSIP(req, res, next) {
+async function requireUSIP(req, res, next) {
   const ip = req.ip || req.socket.remoteAddress || '';
 
   // Normalise IPv4-mapped IPv6 addresses (::ffff:1.2.3.4 → 1.2.3.4)
@@ -115,13 +115,27 @@ function requireUSIP(req, res, next) {
   if (isLocal) return next();
 
   const geo = geoip.lookup(normalised);
-  if (!geo || geo.country !== 'US') {
-    return res.status(403).json({
-      error: 'This petition is open to US residents only.',
-    });
+
+  if (geo) {
+    if (geo.country !== 'US') {
+      return res.status(403).json({ error: 'This petition is open to US residents only.' });
+    }
+    return next();
   }
 
-  next();
+  // geoip-lite has no entry for this IP — fall back to ip-api.com
+  try {
+    const response = await fetch(
+      `http://ip-api.com/json/${encodeURIComponent(normalised)}?fields=countryCode`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    const data = await response.json();
+    if (data.countryCode === 'US') return next();
+  } catch {
+    // ip-api.com unreachable — fail closed
+  }
+
+  return res.status(403).json({ error: 'This petition is open to US residents only.' });
 }
 
 // ─── API: Submit Petition ─────────────────────────────────────────────────────
