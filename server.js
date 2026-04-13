@@ -62,7 +62,7 @@ const pool = new Pool(
 // ─── Static Files ─────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/images', express.static('Images'));
+app.use('/images', express.static(path.join(__dirname, 'Images')));
 
 // ─── Database Initialisation ──────────────────────────────────────────────────
 async function initDB() {
@@ -99,43 +99,47 @@ function validatePetition(name, email) {
 
 // ─── US-Only Geolocation Guard ────────────────────────────────────────────────
 async function requireUSIP(req, res, next) {
-  const ip = req.ip || req.socket.remoteAddress || '';
-
-  // Normalise IPv4-mapped IPv6 addresses (::ffff:1.2.3.4 → 1.2.3.4)
-  const normalised = ip.replace(/^::ffff:/, '');
-
-  // Allow loopback/private addresses in development
-  const isLocal =
-    normalised === '::1' ||
-    normalised === '127.0.0.1' ||
-    normalised.startsWith('10.') ||
-    normalised.startsWith('192.168.') ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(normalised);
-
-  if (isLocal) return next();
-
-  const geo = geoip.lookup(normalised);
-
-  if (geo) {
-    if (geo.country !== 'US') {
-      return res.status(403).json({ error: 'This petition is open to US residents only.' });
-    }
-    return next();
-  }
-
-  // geoip-lite has no entry for this IP — fall back to ip-api.com
   try {
-    const response = await fetch(
-      `http://ip-api.com/json/${encodeURIComponent(normalised)}?fields=countryCode`,
-      { signal: AbortSignal.timeout(3000) }
-    );
-    const data = await response.json();
-    if (data.countryCode === 'US') return next();
-  } catch {
-    // ip-api.com unreachable — fail closed
-  }
+    const ip = req.ip || req.socket.remoteAddress || '';
 
-  return res.status(403).json({ error: 'This petition is open to US residents only.' });
+    // Normalise IPv4-mapped IPv6 addresses (::ffff:1.2.3.4 → 1.2.3.4)
+    const normalised = ip.replace(/^::ffff:/, '');
+
+    // Allow loopback/private addresses in development
+    const isLocal =
+      normalised === '::1' ||
+      normalised === '127.0.0.1' ||
+      normalised.startsWith('10.') ||
+      normalised.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(normalised);
+
+    if (isLocal) return next();
+
+    const geo = geoip.lookup(normalised);
+
+    if (geo) {
+      if (geo.country !== 'US') {
+        return res.status(403).json({ error: 'This petition is open to US residents only.' });
+      }
+      return next();
+    }
+
+    // geoip-lite has no entry for this IP — fall back to ip-api.com
+    try {
+      const response = await fetch(
+        `http://ip-api.com/json/${normalised}?fields=countryCode`,
+        { signal: AbortSignal.timeout(3000) }
+      );
+      const data = await response.json();
+      if (data.countryCode === 'US') return next();
+    } catch {
+      // ip-api.com unreachable — fail closed
+    }
+
+    return res.status(403).json({ error: 'This petition is open to US residents only.' });
+  } catch (err) {
+    next(err);
+  }
 }
 
 // ─── API: Submit Petition ─────────────────────────────────────────────────────
