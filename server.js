@@ -42,6 +42,24 @@ const petitionLimiter = rateLimit({
   message:         { error: 'Too many submission attempts. Please try again in 15 minutes.' },
 });
 
+// ─── Signature Count Cache ────────────────────────────────────────────────────
+const countCache = { value: null, expiresAt: 0 };
+const COUNT_CACHE_TTL_MS = 60_000; // 60 seconds
+
+async function getCachedCount() {
+  if (countCache.value !== null && Date.now() < countCache.expiresAt) {
+    return countCache.value;
+  }
+  const { rows } = await pool.query('SELECT COUNT(*) AS count FROM petition_signatures');
+  countCache.value     = parseInt(rows[0].count, 10);
+  countCache.expiresAt = Date.now() + COUNT_CACHE_TTL_MS;
+  return countCache.value;
+}
+
+function invalidateCountCache() {
+  countCache.value = null;
+}
+
 // ─── PostgreSQL Connection Pool ───────────────────────────────────────────────
 const pool = new Pool(
   process.env.DATABASE_URL
@@ -157,11 +175,10 @@ app.post('/api/petition', petitionLimiter, requireUSIP, async (req, res) => {
       [name.trim(), email.trim().toLowerCase()]
     );
 
-    const { rows } = await pool.query(
-      'SELECT COUNT(*) AS count FROM petition_signatures'
-    );
+    invalidateCountCache();
+    const count = await getCachedCount();
 
-    return res.json({ success: true, count: parseInt(rows[0].count, 10) });
+    return res.json({ success: true, count });
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'This email address has already signed the petition.' });
@@ -198,10 +215,8 @@ app.get('/sitemap.xml', (_req, res) => {
 // ─── API: Get Signature Count ─────────────────────────────────────────────────
 app.get('/api/petition/count', async (_req, res) => {
   try {
-    const { rows } = await pool.query(
-      'SELECT COUNT(*) AS count FROM petition_signatures'
-    );
-    return res.json({ count: parseInt(rows[0].count, 10) });
+    const count = await getCachedCount();
+    return res.json({ count });
   } catch (err) {
     console.error('[DB] Count error:', err.message);
     return res.status(500).json({ error: 'Could not retrieve count.' });
