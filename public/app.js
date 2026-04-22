@@ -46,6 +46,43 @@ async function loadSignatureCount(selectors) {
 
 loadSignatureCount(['.sig-num', '.count-num']);
 
+// ─── Email Verification Result (handles ?verified=1 and ?verify_error=… in URL) ──
+(function () {
+  const form    = document.getElementById('petition-form');
+  const formMsg = document.getElementById('form-message');
+  const submitBtn  = document.getElementById('submit-btn');
+  const submitText = document.getElementById('submit-text');
+  if (!formMsg) return;
+
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get('verified') === '1') {
+    // Successful email verification — hide form, show permanent success
+    if (form) form.style.display = 'none';
+    formMsg.className     = 'form-message success';
+    formMsg.innerHTML     = '✓ Your signature has been confirmed! Thank you for supporting Americans for Moskovitz.';
+    formMsg.style.display = 'block';
+    // Refresh counter now that a new confirmed signature was added
+    loadSignatureCount(['.sig-num', '.count-num']);
+    // Clean up URL bar without reloading
+    window.history.replaceState({}, '', '/petition.html');
+    return;
+  }
+
+  const verifyError = params.get('verify_error');
+  if (verifyError) {
+    const msgs = {
+      expired: 'Your verification link has expired (links are valid for 24 hours). Please re-submit the form below to receive a new one.',
+      invalid: 'That verification link is invalid. Please re-submit the form below.',
+      server:  'A server error occurred while verifying your email. Please try again.',
+    };
+    formMsg.className     = 'form-message error';
+    formMsg.textContent   = msgs[verifyError] || msgs.server;
+    formMsg.style.display = 'block';
+    window.history.replaceState({}, '', '/petition.html');
+  }
+})();
+
 // ─── Petition Form ────────────────────────────────────────────────────────────
 (function () {
   const form    = document.getElementById('petition-form');
@@ -145,17 +182,15 @@ loadSignatureCount(['.sig-num', '.count-num']);
 
       const data = await res.json();
 
-      if (res.ok && data.success) {
+      if (res.ok && data.pending) {
+        // Verification email sent — do not count signature yet
         showFormMessage('success',
-          `Thank you, ${name}! Your signature has been recorded. You are among ${data.count.toLocaleString()} Americans who have signed.`
+          `Almost there, ${name}! We've sent a confirmation email to ${email}. ` +
+          `Please check your inbox (and spam folder) and click the link to confirm your signature.`
         );
         form.reset();
-        // Update all counters on page
-        document.querySelectorAll('.sig-num, .count-num').forEach(el => {
-          el.textContent = data.count.toLocaleString();
-        });
         submitBtn.disabled = true;
-        submitText.textContent = 'Petition Signed ✓';
+        submitText.textContent = 'Check Your Email ✉';
       } else {
         showFormMessage('error', data.error || 'An error occurred. Please try again.');
         setLoading(false);
