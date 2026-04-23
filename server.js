@@ -134,6 +134,7 @@ const transporter = nodemailer.createTransport({
   connectionTimeout: 10_000, // 10 s to establish TCP connection
   greetingTimeout:   8_000,  // 8 s to receive SMTP greeting
   socketTimeout:     15_000, // 15 s of inactivity before giving up
+  family:            4,      // Force IPv4 — IPv6 is unreachable on this host
 });
 
 async function sendVerificationEmail(name, email, token) {
