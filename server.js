@@ -131,6 +131,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  connectionTimeout: 10_000, // 10 s to establish TCP connection
+  greetingTimeout:   8_000,  // 8 s to receive SMTP greeting
+  socketTimeout:     15_000, // 15 s of inactivity before giving up
 });
 
 async function sendVerificationEmail(name, email, token) {
@@ -270,7 +273,12 @@ app.post('/api/petition', petitionLimiter, async (req, res) => {
     `, [cleanName, cleanEmail, token]);
 
     // Send verification email
-    await sendVerificationEmail(cleanName, cleanEmail, token);
+    try {
+      await sendVerificationEmail(cleanName, cleanEmail, token);
+    } catch (emailErr) {
+      console.error('[Email] Failed to send verification email:', emailErr.message);
+      return res.status(500).json({ error: 'We could not send a verification email. Please try again in a few minutes.' });
+    }
 
     return res.json({ pending: true });
   } catch (err) {
