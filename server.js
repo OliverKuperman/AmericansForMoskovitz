@@ -390,6 +390,13 @@ initDB()
       console.log(`\n  Americans for Moskovitz  →  http://localhost:${PORT}\n`);
     });
 
+    // Verify SMTP credentials at startup
+    transporter.verify().then(() => {
+      console.log('[Email] SMTP connection verified.');
+    }).catch(err => {
+      console.error('[Email] SMTP configuration error:', err.message);
+    });
+
     // Clean up stale pending rows every hour
     setInterval(cleanupExpiredPending, 60 * 60 * 1000);
     cleanupExpiredPending();
