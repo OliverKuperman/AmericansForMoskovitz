@@ -138,6 +138,21 @@
               <span id="email-error" class="field-error-msg" role="alert"></span>
             </div>
 
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  id="us-citizen"
+                  name="usCitizen"
+                  required
+                  aria-required="true"
+                  aria-describedby="citizen-error"
+                >
+                <span>By checking this box, you confirm that you are a US citizen.</span>
+              </label>
+              <span id="citizen-error" class="field-error-msg" role="alert"></span>
+            </div>
+
             <button type="submit" id="submit-btn" class="btn btn-blue" aria-label="Submit petition signature">
               <span id="submit-text">Sign the Petition</span>
             </button>
