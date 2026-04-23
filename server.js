@@ -7,8 +7,7 @@ const helmet       = require('helmet');
 const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 const crypto       = require('crypto');
-const nodemailer   = require('nodemailer');
-const dns          = require('dns').promises;
+const { Resend }   = require('resend');
 
 const app = express();
 
@@ -123,47 +122,13 @@ async function initDB() {
   }
 }
 
-// ─── Email Transport ──────────────────────────────────────────────────────────
-// Resolved lazily so we can look up the IPv4 address of the SMTP host before
-// creating the transport (IPv6 is unreachable on this host).
-let _transporter = null;
-
-async function getTransporter() {
-  if (_transporter) return _transporter;
-
-  const hostname = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port     = parseInt(process.env.SMTP_PORT, 10) || 587;
-  let   host     = hostname;
-
-  try {
-    const [ipv4] = await dns.resolve4(hostname);
-    host = ipv4;
-    console.log(`[Email] Resolved ${hostname} → ${host} (IPv4)`);
-  } catch (err) {
-    console.warn(`[Email] IPv4 DNS lookup failed, falling back to hostname: ${err.message}`);
-  }
-
-  _transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    tls: { servername: hostname }, // required for cert validation when connecting by IP
-    connectionTimeout: 10_000,
-    greetingTimeout:   8_000,
-    socketTimeout:     15_000,
-  });
-
-  return _transporter;
-}
+// ─── Email (Resend) ───────────────────────────────────────────────────────────
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendVerificationEmail(name, email, token) {
-  const base       = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const verifyUrl  = `${base}/verify?token=${token}`;
-  const fromAddr   = process.env.EMAIL_FROM || `"Americans for Moskovitz" <${process.env.SMTP_USER}>`;
+  const base      = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const verifyUrl = `${base}/verify?token=${token}`;
+  const fromAddr  = process.env.EMAIL_FROM || 'Americans for Moskovitz <noreply@americansformoskovitz.com>';
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -234,14 +199,15 @@ async function sendVerificationEmail(name, email, token) {
 
   const text = `Hi ${name},\n\nThank you for signing the Americans for Moskovitz petition.\n\nPlease confirm your signature by visiting this link (expires in 24 hours):\n${verifyUrl}\n\nIf you did not sign this petition, you can ignore this email.\n\n— Americans for Moskovitz`;
 
-  const transporter = await getTransporter();
-  await transporter.sendMail({
+  const { error } = await resend.emails.send({
     from:    fromAddr,
     to:      email,
     subject: 'Please confirm your petition signature — Americans for Moskovitz',
     html,
     text,
   });
+
+  if (error) throw new Error(error.message);
 }
 
 // ─── Input Validation ─────────────────────────────────────────────────────────
@@ -421,13 +387,6 @@ initDB()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`\n  Americans for Moskovitz  →  http://localhost:${PORT}\n`);
-    });
-
-    // Verify SMTP credentials at startup
-    getTransporter().then(t => t.verify()).then(() => {
-      console.log('[Email] SMTP connection verified.');
-    }).catch(err => {
-      console.error('[Email] SMTP configuration error:', err.message);
     });
 
     // Clean up stale pending rows every hour
