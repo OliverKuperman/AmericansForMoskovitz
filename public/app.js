@@ -169,12 +169,16 @@ loadSignatureCount(['.sig-num', '.count-num']);
       clearFieldError(emailInput, emailError);
     }
 
-    if (!citizenBox.checked) {
-      citizenError.textContent   = 'You must confirm that you are a US citizen.';
-      citizenError.style.display = 'block';
+    if (!citizenBox || !citizenBox.checked) {
+      if (citizenError) {
+        citizenError.textContent   = 'You must confirm that you are a US citizen.';
+        citizenError.style.display = 'block';
+      } else {
+        showFormMessage('error', 'You must confirm that you are a US citizen to sign this petition.');
+      }
       valid = false;
     } else {
-      citizenError.style.display = 'none';
+      if (citizenError) citizenError.style.display = 'none';
     }
 
     if (!valid) return;

@@ -225,7 +225,11 @@ function validatePetition(name, email) {
 
 // ─── API: Submit Petition (stores pending; does NOT write to petition_signatures) ──
 app.post('/api/petition', petitionLimiter, async (req, res) => {
-  const { name, email } = req.body ?? {};
+  const { name, email, usCitizen } = req.body ?? {};
+
+  if (!usCitizen) {
+    return res.status(400).json({ error: 'You must confirm that you are a US citizen to sign this petition.' });
+  }
 
   const validationError = validatePetition(name, email);
   if (validationError) {
