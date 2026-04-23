@@ -6,7 +6,6 @@ const { Pool }     = require('pg');
 const helmet       = require('helmet');
 const rateLimit    = require('express-rate-limit');
 const path         = require('path');
-const geoip        = require('geoip-lite');
 const crypto       = require('crypto');
 const nodemailer   = require('nodemailer');
 
@@ -224,50 +223,13 @@ function validatePetition(name, email) {
   return null;
 }
 
-// ─── US-Only Geolocation Guard ────────────────────────────────────────────────
-async function requireUSIP(req, res, next) {
-  try {
-    const ip = req.ip || req.socket.remoteAddress || '';
-    const normalised = ip.replace(/^::ffff:/, '');
-
-    const isLocal =
-      normalised === '::1' ||
-      normalised === '127.0.0.1' ||
-      normalised.startsWith('10.') ||
-      normalised.startsWith('192.168.') ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(normalised);
-
-    if (isLocal) return next();
-
-    const geo = geoip.lookup(normalised);
-
-    if (geo) {
-      if (geo.country !== 'US') {
-        return res.status(403).json({ error: 'This petition is open to US residents only.' });
-      }
-      return next();
-    }
-
-    try {
-      const response = await fetch(
-        `http://ip-api.com/json/${normalised}?fields=countryCode`,
-        { signal: AbortSignal.timeout(3000) }
-      );
-      const data = await response.json();
-      if (data.countryCode === 'US') return next();
-    } catch {
-      // ip-api.com unreachable — fail closed
-    }
-
-    return res.status(403).json({ error: 'This petition is open to US residents only.' });
-  } catch (err) {
-    next(err);
-  }
-}
-
 // ─── API: Submit Petition (stores pending; does NOT write to petition_signatures) ──
-app.post('/api/petition', petitionLimiter, requireUSIP, async (req, res) => {
-  const { name, email } = req.body ?? {};
+app.post('/api/petition', petitionLimiter, async (req, res) => {
+  const { name, email, usCitizen } = req.body ?? {};
+
+  if (!usCitizen) {
+    return res.status(400).json({ error: 'You must confirm that you are a US citizen to sign this petition.' });
+  }
 
   const validationError = validatePetition(name, email);
   if (validationError) {

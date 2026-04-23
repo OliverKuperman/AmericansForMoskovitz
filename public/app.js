@@ -88,13 +88,15 @@ loadSignatureCount(['.sig-num', '.count-num']);
   const form    = document.getElementById('petition-form');
   if (!form) return;
 
-  const nameInput   = document.getElementById('input-name');
-  const emailInput  = document.getElementById('input-email');
-  const nameError   = document.getElementById('name-error');
-  const emailError  = document.getElementById('email-error');
-  const formMsg     = document.getElementById('form-message');
-  const submitBtn   = document.getElementById('submit-btn');
-  const submitText  = document.getElementById('submit-text');
+  const nameInput     = document.getElementById('input-name');
+  const emailInput    = document.getElementById('input-email');
+  const citizenBox    = document.getElementById('us-citizen');
+  const nameError     = document.getElementById('name-error');
+  const emailError    = document.getElementById('email-error');
+  const citizenError  = document.getElementById('citizen-error');
+  const formMsg       = document.getElementById('form-message');
+  const submitBtn     = document.getElementById('submit-btn');
+  const submitText    = document.getElementById('submit-text');
 
   const NAME_RE  = /^[A-Za-z\s'\-\.]{2,100}$/;
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -169,6 +171,13 @@ loadSignatureCount(['.sig-num', '.count-num']);
       clearFieldError(emailInput, emailError);
     }
 
+    if (!citizenBox.checked) {
+      showFieldError(citizenBox, citizenError, 'You must confirm that you are a US citizen.');
+      valid = false;
+    } else {
+      clearFieldError(citizenBox, citizenError);
+    }
+
     if (!valid) return;
 
     setLoading(true);
@@ -177,7 +186,7 @@ loadSignatureCount(['.sig-num', '.count-num']);
       const res  = await fetch('/api/petition', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ name, email }),
+        body:    JSON.stringify({ name, email, usCitizen: true }),
       });
 
       const data = await res.json();
