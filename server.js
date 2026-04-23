@@ -1,9 +1,6 @@
 'use strict';
 require('dotenv').config();
 
-// Force IPv4 for all DNS lookups — IPv6 is unreachable on this host
-require('dns').setDefaultResultOrder('ipv4first');
-
 const express      = require('express');
 const { Pool }     = require('pg');
 const helmet       = require('helmet');
@@ -11,6 +8,7 @@ const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 const crypto       = require('crypto');
 const nodemailer   = require('nodemailer');
+const dns          = require('dns').promises;
 
 const app = express();
 
@@ -126,19 +124,41 @@ async function initDB() {
 }
 
 // ─── Email Transport ──────────────────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-  host:   process.env.SMTP_HOST,
-  port:   parseInt(process.env.SMTP_PORT, 10) || 587,
-  secure: process.env.SMTP_SECURE === 'true', // true for port 465, false for 587
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  connectionTimeout: 10_000, // 10 s to establish TCP connection
-  greetingTimeout:   8_000,  // 8 s to receive SMTP greeting
-  socketTimeout:     15_000, // 15 s of inactivity before giving up
-  family:            4,      // Force IPv4 — IPv6 is unreachable on this host
-});
+// Resolved lazily so we can look up the IPv4 address of the SMTP host before
+// creating the transport (IPv6 is unreachable on this host).
+let _transporter = null;
+
+async function getTransporter() {
+  if (_transporter) return _transporter;
+
+  const hostname = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const port     = parseInt(process.env.SMTP_PORT, 10) || 587;
+  let   host     = hostname;
+
+  try {
+    const [ipv4] = await dns.resolve4(hostname);
+    host = ipv4;
+    console.log(`[Email] Resolved ${hostname} → ${host} (IPv4)`);
+  } catch (err) {
+    console.warn(`[Email] IPv4 DNS lookup failed, falling back to hostname: ${err.message}`);
+  }
+
+  _transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    tls: { servername: hostname }, // required for cert validation when connecting by IP
+    connectionTimeout: 10_000,
+    greetingTimeout:   8_000,
+    socketTimeout:     15_000,
+  });
+
+  return _transporter;
+}
 
 async function sendVerificationEmail(name, email, token) {
   const base       = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -214,6 +234,7 @@ async function sendVerificationEmail(name, email, token) {
 
   const text = `Hi ${name},\n\nThank you for signing the Americans for Moskovitz petition.\n\nPlease confirm your signature by visiting this link (expires in 24 hours):\n${verifyUrl}\n\nIf you did not sign this petition, you can ignore this email.\n\n— Americans for Moskovitz`;
 
+  const transporter = await getTransporter();
   await transporter.sendMail({
     from:    fromAddr,
     to:      email,
@@ -403,7 +424,7 @@ initDB()
     });
 
     // Verify SMTP credentials at startup
-    transporter.verify().then(() => {
+    getTransporter().then(t => t.verify()).then(() => {
       console.log('[Email] SMTP connection verified.');
     }).catch(err => {
       console.error('[Email] SMTP configuration error:', err.message);
