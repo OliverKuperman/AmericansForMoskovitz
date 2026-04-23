@@ -78,7 +78,14 @@ const pool = new Pool(
 );
 
 // ─── Static Files ─────────────────────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    // Prevent browsers from caching JS/CSS so changes are always picked up
+    if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+  },
+}));
 app.use('/images', express.static(path.join(__dirname, 'Images')));
 
 // ─── Database Initialisation ──────────────────────────────────────────────────
