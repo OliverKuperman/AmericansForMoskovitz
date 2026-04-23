@@ -50,8 +50,6 @@ loadSignatureCount(['.sig-num', '.count-num']);
 (function () {
   const form    = document.getElementById('petition-form');
   const formMsg = document.getElementById('form-message');
-  const submitBtn  = document.getElementById('submit-btn');
-  const submitText = document.getElementById('submit-text');
   if (!formMsg) return;
 
   const params = new URLSearchParams(window.location.search);
@@ -172,10 +170,11 @@ loadSignatureCount(['.sig-num', '.count-num']);
     }
 
     if (!citizenBox.checked) {
-      showFieldError(citizenBox, citizenError, 'You must confirm that you are a US citizen.');
+      citizenError.textContent   = 'You must confirm that you are a US citizen.';
+      citizenError.style.display = 'block';
       valid = false;
     } else {
-      clearFieldError(citizenBox, citizenError);
+      citizenError.style.display = 'none';
     }
 
     if (!valid) return;
