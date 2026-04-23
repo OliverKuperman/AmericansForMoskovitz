@@ -1,6 +1,9 @@
 'use strict';
 require('dotenv').config();
 
+// Force IPv4 for all DNS lookups — IPv6 is unreachable on this host
+require('dns').setDefaultResultOrder('ipv4first');
+
 const express      = require('express');
 const { Pool }     = require('pg');
 const helmet       = require('helmet');
