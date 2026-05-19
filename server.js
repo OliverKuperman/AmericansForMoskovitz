@@ -8,6 +8,7 @@ const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 const crypto       = require('crypto');
 const { Resend }   = require('resend');
+const nodemailer   = require('nodemailer');
 
 const app = express();
 
@@ -122,8 +123,37 @@ async function initDB() {
   }
 }
 
-// ─── Email (Resend) ───────────────────────────────────────────────────────────
-const resend = new Resend(process.env.RESEND_API_KEY);
+// ─── Email (Resend primary, Mailjet fallback) ─────────────────────────────────
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+let mailjetTransport = null;
+if (process.env.MAILJET_API_KEY && process.env.MAILJET_SECRET_KEY) {
+  mailjetTransport = nodemailer.createTransport({
+    host:   'in-v3.mailjet.com',
+    port:   587,
+    secure: false,
+    auth: {
+      user: process.env.MAILJET_API_KEY,
+      pass: process.env.MAILJET_SECRET_KEY,
+    },
+  });
+}
+
+async function sendViaResend(payload) {
+  if (!resend) throw new Error('Resend not configured');
+  const { error } = await resend.emails.send(payload);
+  if (error) throw new Error(error.message || 'Resend send failed');
+}
+
+async function sendViaMailjet(payload) {
+  if (!mailjetTransport) throw new Error('Mailjet not configured');
+  await mailjetTransport.sendMail(payload);
+}
+
+const EMAIL_PROVIDERS = [
+  { name: 'Resend',  send: sendViaResend  },
+  { name: 'Mailjet', send: sendViaMailjet },
+];
 
 async function sendVerificationEmail(name, email, token) {
   const base      = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -199,15 +229,28 @@ async function sendVerificationEmail(name, email, token) {
 
   const text = `Hi ${name},\n\nThank you for signing the Americans for Moskovitz petition.\n\nPlease confirm your signature by visiting this link (expires in 24 hours):\n${verifyUrl}\n\nIf you did not sign this petition, you can ignore this email.\n\n— Americans for Moskovitz`;
 
-  const { error } = await resend.emails.send({
+  const payload = {
     from:    fromAddr,
     to:      email,
     subject: 'Please confirm your petition signature — Americans for Moskovitz',
     html,
     text,
-  });
+  };
 
-  if (error) throw new Error(error.message);
+  const errors = [];
+  for (const provider of EMAIL_PROVIDERS) {
+    try {
+      await provider.send(payload);
+      if (errors.length) {
+        console.warn(`[Email] Sent via ${provider.name} after ${errors.length} failure(s): ${errors.map(e => e.message).join(' | ')}`);
+      }
+      return;
+    } catch (err) {
+      console.error(`[Email] ${provider.name} failed: ${err.message}`);
+      errors.push(err);
+    }
+  }
+  throw new Error(`All email providers failed: ${errors.map(e => e.message).join(' | ')}`);
 }
 
 // ─── Input Validation ─────────────────────────────────────────────────────────
