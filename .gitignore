@@ -1,5 +1,5 @@
 # Secrets / local config
-# (.env intentionally tracked — deployment relies on it)
+.env
 .env.local
 .env.*.local
 
