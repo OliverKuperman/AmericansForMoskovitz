@@ -8,7 +8,6 @@ const rateLimit    = require('express-rate-limit');
 const path         = require('path');
 const crypto       = require('crypto');
 const { Resend }   = require('resend');
-const nodemailer   = require('nodemailer');
 
 const app = express();
 
@@ -123,21 +122,8 @@ async function initDB() {
   }
 }
 
-// ─── Email (Resend primary, Mailjet fallback) ─────────────────────────────────
+// ─── Email (Resend) ───────────────────────────────────────────────────────────
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-
-let mailjetTransport = null;
-if (process.env.MAILJET_API_KEY && process.env.MAILJET_SECRET_KEY) {
-  mailjetTransport = nodemailer.createTransport({
-    host:   'in-v3.mailjet.com',
-    port:   587,
-    secure: false,
-    auth: {
-      user: process.env.MAILJET_API_KEY,
-      pass: process.env.MAILJET_SECRET_KEY,
-    },
-  });
-}
 
 async function sendViaResend(payload) {
   if (!resend) throw new Error('Resend not configured');
@@ -145,20 +131,14 @@ async function sendViaResend(payload) {
   if (error) throw new Error(error.message || 'Resend send failed');
 }
 
-async function sendViaMailjet(payload) {
-  if (!mailjetTransport) throw new Error('Mailjet not configured');
-  await mailjetTransport.sendMail(payload);
-}
-
 const EMAIL_PROVIDERS = [
   { name: 'Resend',  send: sendViaResend  },
-  { name: 'Mailjet', send: sendViaMailjet },
 ];
 
 async function sendVerificationEmail(name, email, token) {
   const base      = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
   const verifyUrl = `${base}/verify?token=${token}`;
-  const fromAddr  = process.env.EMAIL_FROM || 'Americans for Moskovitz <noreply@americansformoskovitz.com>';
+  const fromAddr  = process.env.RESEND_EMAIL_ADDRESS || 'Americans for Moskovitz <noreply@americansformoskovitz.com>';
 
   const html = `<!DOCTYPE html>
 <html lang="en">
