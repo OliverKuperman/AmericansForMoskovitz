@@ -122,7 +122,7 @@ async function initDB() {
   }
 }
 
-// ─── Email (Resend) ───────────────────────────────────────────────────────────
+// ─── Email (Resend primary, MailerSend fallback) ──────────────────────────────
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 async function sendViaResend(payload) {
@@ -131,8 +131,41 @@ async function sendViaResend(payload) {
   if (error) throw new Error(error.message || 'Resend send failed');
 }
 
+// Parse a "Name <email@host>" string into { email, name }; bare addresses also work.
+function parseFromAddress(from) {
+  const match = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(from);
+  if (match) return { email: match[2].trim(), name: match[1].trim() || undefined };
+  return { email: from.trim() };
+}
+
+async function sendViaMailerSend(payload) {
+  const apiKey = process.env.MAILERSEND_API_KEY;
+  if (!apiKey) throw new Error('MailerSend not configured');
+
+  const res = await fetch('https://api.mailersend.com/v1/email', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from:    parseFromAddress(payload.from),
+      to:      [{ email: payload.to }],
+      subject: payload.subject,
+      text:    payload.text,
+      html:    payload.html,
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`MailerSend send failed (${res.status}): ${detail}`);
+  }
+}
+
 const EMAIL_PROVIDERS = [
-  { name: 'Resend',  send: sendViaResend  },
+  { name: 'Resend',     send: sendViaResend     },
+  { name: 'MailerSend', send: sendViaMailerSend },
 ];
 
 async function sendVerificationEmail(name, email, token) {
