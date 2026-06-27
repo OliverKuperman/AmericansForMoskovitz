@@ -61,11 +61,19 @@ function invalidateCountCache() {
 }
 
 // ─── PostgreSQL Connection Pool ───────────────────────────────────────────────
+// When DATABASE_URL is set (e.g. Railway), SSL is on by default unless DB_SSL=false.
+// For individual-host config, SSL is off unless DB_SSL=true.
+function getSslConfig(defaultOn) {
+  if (process.env.DB_SSL === 'false') return false;
+  if (process.env.DB_SSL === 'true' || defaultOn) return { rejectUnauthorized: false };
+  return false;
+}
+
 const pool = new Pool(
   process.env.DATABASE_URL
     ? {
         connectionString: process.env.DATABASE_URL,
-        ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+        ssl: getSslConfig(true),
       }
     : {
         host:     process.env.DB_HOST     || 'localhost',
@@ -73,7 +81,7 @@ const pool = new Pool(
         database: process.env.DB_NAME     || 'moskovitz_petition',
         user:     process.env.DB_USER,
         password: process.env.DB_PASSWORD,
-        ssl:      process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+        ssl:      getSslConfig(false),
       }
 );
 
