@@ -70,9 +70,9 @@ loadSignatureCount(['.sig-num', '.count-num']);
   const verifyError = params.get('verify_error');
   if (verifyError) {
     const msgs = {
-      expired: 'Your verification link has expired (links are valid for 24 hours). Please re-submit the form below to receive a new one.',
-      invalid: 'That verification link is invalid. Please re-submit the form below.',
-      server:  'A server error occurred while verifying your email. Please try again.',
+      expired: 'That confirmation link has expired (links are valid for 30 days). Your signature still counts; re-submit the form below if you would like a new link.',
+      invalid: 'That confirmation link is invalid. Please re-submit the form below.',
+      server:  'A server error occurred while confirming your signature. Please try again.',
     };
     formMsg.className     = 'form-message error';
     formMsg.textContent   = msgs[verifyError] || msgs.server;
@@ -202,14 +202,16 @@ loadSignatureCount(['.sig-num', '.count-num']);
       const data = await res.json();
 
       if (res.ok && data.pending) {
-        // Verification email sent — do not count signature yet
+        // The signature is counted once the provider reports the mail delivered;
+        // clicking the link in it upgrades the signature to confirmed.
         showFormMessage('success',
-          `Almost there, ${name}! We've sent a confirmation email to ${email}. ` +
-          `Please check your inbox (and spam folder) and click the link to confirm your signature.`
+          `Thank you, ${name}! Your signature is being counted, and we've sent a ` +
+          `confirmation email to ${email}. Clicking the link in it marks your ` +
+          `signature as confirmed, which carries more weight when we deliver the petition.`
         );
         form.reset();
         submitBtn.disabled = true;
-        submitText.textContent = 'Check Your Email ✉';
+        submitText.textContent = 'Signed ✓';
       } else {
         showFormMessage('error', data.error || 'An error occurred. Please try again.');
         setLoading(false);

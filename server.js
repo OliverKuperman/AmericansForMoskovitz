@@ -30,6 +30,10 @@ app.use(
   })
 );
 
+// Provider webhooks are signature-verified against the exact bytes we received,
+// so they must be parsed as a raw Buffer before the JSON parser rewrites them.
+app.use('/api/webhooks/email', express.raw({ type: '*/*', limit: '100kb' }));
+
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: false, limit: '10kb' }));
 
@@ -99,8 +103,20 @@ async function initDB() {
         name      VARCHAR(100) NOT NULL,
         email     VARCHAR(255) NOT NULL,
         signed_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        confirmed BOOLEAN      NOT NULL DEFAULT FALSE,
         CONSTRAINT petition_signatures_email_unique UNIQUE (email)
       );
+    `);
+
+    // Signatures predating the delivery-based flow were all click-confirmed, so
+    // backfill them as TRUE, then default new rows to FALSE.
+    await client.query(`
+      ALTER TABLE petition_signatures
+        ADD COLUMN IF NOT EXISTS confirmed BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+    await client.query(`
+      ALTER TABLE petition_signatures
+        ALTER COLUMN confirmed SET DEFAULT FALSE;
     `);
 
     // Pending email verifications (not yet confirmed)
@@ -114,6 +130,13 @@ async function initDB() {
         CONSTRAINT pending_verifications_email_unique UNIQUE (email),
         CONSTRAINT pending_verifications_token_unique UNIQUE (token)
       );
+    `);
+
+    // Set when a provider tells us the mail actually landed. The row is kept
+    // afterwards so a later click can still upgrade the signature to confirmed.
+    await client.query(`
+      ALTER TABLE pending_verifications
+        ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
     `);
 
     console.log('[DB] Tables ready.');
@@ -216,7 +239,7 @@ async function sendVerificationEmail(name, email, token) {
             </table>
 
             <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#6b7280;">
-              This link expires in <strong>24 hours</strong>. If you did not sign this petition, you can safely ignore this email — no action will be taken.
+              Your signature has been counted. Clicking the link above marks it as confirmed, which carries more weight when the petition is delivered. The link works for <strong>30 days</strong>. If you did not sign this petition, reply to this email and we will remove your address.
             </p>
             <p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#9ca3af;word-break:break-all;">
               If the button above doesn't work, copy and paste this link into your browser:<br>
@@ -240,12 +263,12 @@ async function sendVerificationEmail(name, email, token) {
 </body>
 </html>`;
 
-  const text = `Hi ${name},\n\nThank you for signing the Americans for Moskovitz petition.\n\nPlease confirm your signature by visiting this link (expires in 24 hours):\n${verifyUrl}\n\nIf you did not sign this petition, you can ignore this email.\n\n— Americans for Moskovitz`;
+  const text = `Hi ${name},\n\nThank you for signing the Americans for Moskovitz petition. Your signature has been counted.\n\nTo mark it as confirmed, which carries more weight when the petition is delivered, visit this link (works for 30 days):\n${verifyUrl}\n\nIf you did not sign this petition, reply to this email and we will remove your address.\n\n— Americans for Moskovitz`;
 
   const payload = {
     from:    fromAddr,
     to:      email,
-    subject: 'Please confirm your petition signature — Americans for Moskovitz',
+    subject: 'Confirm your petition signature — Americans for Moskovitz',
     html,
     text,
   };
@@ -350,7 +373,7 @@ app.get('/verify', async (req, res) => {
       SELECT id, name, email
       FROM   pending_verifications
       WHERE  token      = $1
-        AND  created_at > NOW() - INTERVAL '24 hours'
+        AND  created_at > NOW() - INTERVAL '30 days'
     `, [token]);
 
     if (!rows.length) {
@@ -361,11 +384,14 @@ app.get('/verify', async (req, res) => {
 
     await client.query('BEGIN');
     try {
-      // Promote to confirmed signatures (ON CONFLICT in case of a race)
+      // The signature may already exist from the delivery webhook; either way
+      // the click is what marks it confirmed.
       await client.query(`
-        INSERT INTO petition_signatures (name, email)
-        VALUES ($1, $2)
-        ON CONFLICT (email) DO NOTHING
+        INSERT INTO petition_signatures (name, email, confirmed)
+        VALUES ($1, $2, TRUE)
+        ON CONFLICT (email) DO UPDATE
+          SET confirmed = TRUE,
+              name      = EXCLUDED.name
       `, [pending.name, pending.email]);
 
       // Remove from pending
@@ -387,6 +413,168 @@ app.get('/verify', async (req, res) => {
     return res.redirect('/petition.html?verify_error=server');
   } finally {
     client.release();
+  }
+});
+
+// ─── Email Provider Webhooks ──────────────────────────────────────────────────
+// Delivery is what turns a pending row into a counted signature; a hard bounce or
+// spam complaint takes it back out. Clicking the link in the mail is a separate,
+// stronger tier tracked by petition_signatures.confirmed.
+
+const WEBHOOK_TOLERANCE_MS = 5 * 60 * 1000;
+
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+}
+
+// Resend signs with Svix: base64 HMAC-SHA256 over "<id>.<timestamp>.<raw body>".
+function verifyResendSignature(req) {
+  const secret    = process.env.RESEND_WEBHOOK_SECRET;
+  const id        = req.get('svix-id');
+  const timestamp = req.get('svix-timestamp');
+  const header    = req.get('svix-signature');
+  if (!secret || !id || !timestamp || !header) return false;
+
+  const sentAt = parseInt(timestamp, 10) * 1000;
+  if (!Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > WEBHOOK_TOLERANCE_MS) return false;
+
+  const key      = Buffer.from(secret.replace(/^whsec_/, ''), 'base64');
+  const expected = crypto
+    .createHmac('sha256', key)
+    .update(`${id}.${timestamp}.${req.body.toString('utf8')}`)
+    .digest('base64');
+
+  return header.split(' ').some(part => {
+    const [version, value] = part.split(',');
+    return version === 'v1' && value && safeEqual(value, expected);
+  });
+}
+
+// MailerSend signs with a hex HMAC-SHA256 over the raw body.
+function verifyMailerSendSignature(req) {
+  const secret = process.env.MAILERSEND_WEBHOOK_SECRET;
+  const sig    = req.get('signature');
+  if (!secret || !sig) return false;
+  const expected = crypto.createHmac('sha256', secret).update(req.body).digest('hex');
+  return safeEqual(sig, expected);
+}
+
+// Mail landed: count the signature, unconfirmed until they click the link.
+async function promoteDelivered(email) {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      'SELECT id, name FROM pending_verifications WHERE email = $1',
+      [email]
+    );
+    // No pending row means this address was already confirmed, already removed,
+    // or belongs to some other mail we sent. Nothing to do either way.
+    if (!rows.length) return;
+
+    await client.query('BEGIN');
+    try {
+      const inserted = await client.query(`
+        INSERT INTO petition_signatures (name, email, confirmed)
+        VALUES ($1, $2, FALSE)
+        ON CONFLICT (email) DO NOTHING
+      `, [rows[0].name, email]);
+
+      await client.query(
+        'UPDATE pending_verifications SET delivered_at = NOW() WHERE id = $1',
+        [rows[0].id]
+      );
+
+      await client.query('COMMIT');
+      if (inserted.rowCount) {
+        invalidateCountCache();
+        console.log(`[Webhook] Counted delivered signature for ${email}`);
+      }
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    }
+  } finally {
+    client.release();
+  }
+}
+
+// Hard bounce or spam complaint: drop the pending row and any signature that was
+// only ever backed by delivery. Click-confirmed signatures are left alone.
+async function dropUndeliverable(email, reason) {
+  await pool.query('DELETE FROM pending_verifications WHERE email = $1', [email]);
+  const removed = await pool.query(
+    'DELETE FROM petition_signatures WHERE email = $1 AND confirmed = FALSE',
+    [email]
+  );
+  if (removed.rowCount) invalidateCountCache();
+  console.log(`[Webhook] ${reason} for ${email}; removed ${removed.rowCount} unconfirmed signature(s)`);
+}
+
+app.post('/api/webhooks/email/resend', async (req, res) => {
+  if (!Buffer.isBuffer(req.body) || !verifyResendSignature(req)) {
+    return res.sendStatus(401);
+  }
+
+  let event;
+  try {
+    event = JSON.parse(req.body.toString('utf8'));
+  } catch {
+    return res.sendStatus(400);
+  }
+
+  const recipients = []
+    .concat(event?.data?.to ?? [])
+    .map(r => String(typeof r === 'string' ? r : r?.email ?? '').trim().toLowerCase())
+    .filter(Boolean);
+
+  try {
+    for (const email of recipients) {
+      if (event.type === 'email.delivered') {
+        await promoteDelivered(email);
+      } else if (event.type === 'email.bounced' && event?.data?.bounce?.type !== 'Transient') {
+        await dropUndeliverable(email, 'Hard bounce');
+      } else if (event.type === 'email.complained') {
+        await dropUndeliverable(email, 'Spam complaint');
+      }
+    }
+    return res.sendStatus(200);
+  } catch (err) {
+    // Non-2xx makes the provider retry, which is what we want on a DB blip.
+    console.error('[Webhook] Resend handler error:', err.message);
+    return res.sendStatus(500);
+  }
+});
+
+app.post('/api/webhooks/email/mailersend', async (req, res) => {
+  if (!Buffer.isBuffer(req.body) || !verifyMailerSendSignature(req)) {
+    return res.sendStatus(401);
+  }
+
+  let event;
+  try {
+    event = JSON.parse(req.body.toString('utf8'));
+  } catch {
+    return res.sendStatus(400);
+  }
+
+  const recipient = event?.data?.email?.recipient?.email ?? event?.data?.recipient?.email ?? '';
+  const email = String(recipient).trim().toLowerCase();
+  if (!email) return res.sendStatus(200);
+
+  try {
+    if (event.type === 'activity.delivered') {
+      await promoteDelivered(email);
+    } else if (event.type === 'activity.hard_bounced') {
+      await dropUndeliverable(email, 'Hard bounce');
+    } else if (event.type === 'activity.spam_complaint') {
+      await dropUndeliverable(email, 'Spam complaint');
+    }
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error('[Webhook] MailerSend handler error:', err.message);
+    return res.sendStatus(500);
   }
 });
 
