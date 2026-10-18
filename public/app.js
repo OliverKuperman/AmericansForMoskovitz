@@ -180,7 +180,7 @@ loadSignatureCount(['.sig-num', '.count-num']);
 
     if (citizenBox && !citizenBox.checked) {
       if (citizenError) {
-        citizenError.textContent   = 'You must confirm that you are a US citizen.';
+        citizenError.textContent   = 'You must confirm that you are an American citizen and at least 18 years old.';
         citizenError.style.display = 'block';
       }
       valid = false;

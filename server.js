@@ -308,7 +308,7 @@ app.post('/api/petition', petitionLimiter, async (req, res) => {
   const { name, email, usCitizen } = req.body ?? {};
 
   if (!usCitizen) {
-    return res.status(400).json({ error: 'You must confirm that you are a US citizen to sign this petition.' });
+    return res.status(400).json({ error: 'You must confirm that you are an American citizen and at least 18 years old to sign this petition.' });
   }
 
   const validationError = validatePetition(name, email);
@@ -368,7 +368,7 @@ app.get('/verify', async (req, res) => {
 
   const client = await pool.connect();
   try {
-    // Look up the pending verification (must be < 24 hours old)
+    // Look up the pending verification (must be < 30 days old)
     const { rows } = await client.query(`
       SELECT id, name, email
       FROM   pending_verifications
@@ -616,7 +616,7 @@ async function cleanupExpiredPending() {
   try {
     const { rowCount } = await pool.query(`
       DELETE FROM pending_verifications
-      WHERE created_at < NOW() - INTERVAL '24 hours'
+      WHERE created_at < NOW() - INTERVAL '30 days'
     `);
     if (rowCount > 0) console.log(`[DB] Cleaned up ${rowCount} expired pending verification(s).`);
   } catch (err) {
